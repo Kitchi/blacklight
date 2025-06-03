@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blacklight"
+dynamic = ["readme"]
+version = "0.01"
+authors = [
+         {name = "Srikrishna Sekhar", email = "ssekhar@nrao.edu" },
+         ]
+description = "Radio interferometric UV plane visualization"
+dependencies = [
+    'casatools>=6.7',
+    'casatasks>=6.7',
+    'casadata',
+    'numpy <2.0',
+    'bokeh >= 3.7.2']
+license = {file="LICENSE"}
+requires-python = ">=3.10"
+classifiers = [
+            "Programming Language :: Python :: 3",
+            "License :: OSI Approved :: MIT License",
+            "Operating System :: OS Independent",
+            ]
+
+[project.urls]
+"Homepage" = "https://github.com/Kitchi/blacklight"
+
+[project.scripts]
+blacklight = "blacklight.scripts.blacklight:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+readme = {file = ["README.md"]}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ['*.txt']
