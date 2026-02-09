@@ -3,6 +3,7 @@ IO module
 """
 
 import os
+import shutil
 from multiprocessing import Pool, cpu_count
 
 import numpy as np
@@ -243,9 +244,14 @@ def ms_to_parquet(
     if output_pq is None:
         output_pq = input_ms + ".parquet"
 
-    if not overwrite and os.path.exists(output_pq):
-        print(f"{output_pq} exists, not overwriting.")
-        return output_pq
+    if os.path.exists(output_pq):
+        if not overwrite:
+            print(f"{output_pq} exists, not overwriting.")
+            return output_pq
+        if os.path.isdir(output_pq):
+            shutil.rmtree(output_pq)
+        else:
+            os.remove(output_pq)
 
     if nworkers is None:
         nworkers = cpu_count()
