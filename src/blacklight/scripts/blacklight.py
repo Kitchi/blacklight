@@ -36,7 +36,8 @@ def main():
     table = pq.read_table(pqpath, columns=["U", "V", "DATA_REAL", "DATA_IMAG"])
     df = table.to_pandas()
 
-    # Add derived columns
+    # Add derived columns, then drop the heavy nested arrays
     plot.add_derived_columns(df, amplitude=True, uvdist=True)
+    df.drop(columns=["DATA_REAL", "DATA_IMAG"], inplace=True)
 
     plot.plot_uv_basic(df, xcol="U", ycol="V", zcol="AMP")

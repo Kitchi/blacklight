@@ -77,5 +77,5 @@ def plot_uv_basic(uvdf, xcol: str = "U", ycol: str = "V", zcol: str = "AMP") -> 
     """
 
     plot = figure(width=300, height=300, output_backend="webgl")
-    plot.scatter(x=xcol, y=ycol, size=zcol, color="red", source=uvdf)
+    plot.scatter(x=xcol, y=ycol, size=2, color="red", source=uvdf)
     show(plot)
