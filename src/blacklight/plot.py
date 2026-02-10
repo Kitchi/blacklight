@@ -8,6 +8,19 @@ from holoviews.operation.datashader import rasterize
 
 hv.extension("bokeh")
 
+# Curated colormap choices (colorcet names → display labels)
+COLORMAPS = {
+    "kbc": "Blue (kbc)",
+    "fire": "Fire",
+    "bgy": "Blue-Green-Yellow",
+    "bmw": "Blue-Magenta-White",
+    "bmy": "Blue-Magenta-Yellow",
+    "gray": "Grayscale",
+    "rainbow4": "Rainbow",
+    "coolwarm": "Cool-Warm (diverging)",
+    "CET_D1": "Diverging Blue-Red",
+}
+
 # Available axis choices
 AXIS_COLUMNS = {
     "U": "U (wavelengths)",
@@ -41,6 +54,9 @@ def create_uv_plot(
     xcol="U",
     ycol="V",
     agg_col="count",
+    cmap="kbc",
+    logz=False,
+    responsive=True,
     width=800,
     height=800,
 ) -> hv.Element:
@@ -58,6 +74,12 @@ def create_uv_plot(
     agg_col : str
         Aggregation column. "count" for density, or a column name
         for ds.mean() aggregation.
+    cmap : str
+        Colormap name (colorcet key).
+    logz : bool
+        If True, use logarithmic color scale.
+    responsive : bool
+        If True, plot fills available space. Set False for static export.
     width : int
         Plot width in pixels.
     height : int
@@ -79,14 +101,14 @@ def create_uv_plot(
     clabel = COLOR_COLUMNS.get(agg_col, agg_col)
 
     rasterized = rasterized.opts(
-        width=width,
-        height=height,
+        responsive=responsive,
         colorbar=True,
         clabel=clabel,
         xlabel=xlabel,
         ylabel=ylabel,
+        cmap=cmap,
+        logz=logz,
         tools=["hover"],
-        sizing_mode="stretch_both",
     )
 
     return rasterized

@@ -145,14 +145,14 @@ def _read_chunk(args: tuple) -> str:
     Parameters
     ----------
     args : tuple
-        (input_ms, startrow, nrow, chunk_index, output_dir)
+        (input_ms, startrow, nrow, chunk_index, output_dir, field_names)
 
     Returns
     -------
     str
         Path to the written part file.
     """
-    input_ms, startrow, nrow, chunk_index, output_dir = args
+    input_ms, startrow, nrow, chunk_index, output_dir, field_names = args
 
     _tb = table()
     _tb.open(input_ms)
@@ -165,8 +165,12 @@ def _read_chunk(args: tuple) -> str:
     flag = _tb.getcol("FLAG", startrow=startrow, nrow=nrow)  # (npol, nchan, nrow)
     data = _tb.getcol("DATA", startrow=startrow, nrow=nrow)  # (npol, nchan, nrow)
     ddid = _tb.getcol("DATA_DESC_ID", startrow=startrow, nrow=nrow)
+    field_id = _tb.getcol("FIELD_ID", startrow=startrow, nrow=nrow)
 
     _tb.close()
+
+    # Map field IDs to human-readable names
+    field_col = [field_names[fid] for fid in field_id]
 
     # Compute amplitude and phase with flag masking
     # data shape: (npol, nchan, nrow), flag shape: (npol, nchan, nrow)
@@ -196,6 +200,7 @@ def _read_chunk(args: tuple) -> str:
         "UVDIST": uvdist,
         "TIME": time_col,
         "SPW_ID": ddid.astype(np.int32),
+        "FIELD": field_col,
     }
 
     part_table = pa.Table.from_pydict(result)
@@ -250,6 +255,12 @@ def ms_to_parquet(
 
     meta = get_ms_metadata(input_ms)
 
+    # Build field ID → name mapping
+    _msmd = msmetadata()
+    _msmd.open(input_ms)
+    field_names = _msmd.fieldnames()
+    _msmd.close()
+
     if npartitions is None:
         npartitions = max(nworkers, min(64, meta["nrow"] // 500_000 + 1))
 
@@ -262,7 +273,7 @@ def ms_to_parquet(
 
     # Prepare worker args — each chunk gets its index and output dir
     worker_args = [
-        (input_ms, startrow, nrow, i, output_pq)
+        (input_ms, startrow, nrow, i, output_pq, field_names)
         for i, (startrow, nrow) in enumerate(chunks)
     ]
 

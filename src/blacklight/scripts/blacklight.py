@@ -5,9 +5,11 @@
 import argparse
 
 import dask.dataframe as dd
+import holoviews as hv
 
 from blacklight import io
 from blacklight.app import build_app
+from blacklight.plot import create_uv_plot
 
 
 def main():
@@ -33,6 +35,13 @@ def main():
         action="store_true",
         help="Start server without opening browser",
     )
+    parser.add_argument(
+        "--save-plot",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Save a static plot to PATH (.html or .png) and exit",
+    )
 
     args = parser.parse_args()
 
@@ -43,6 +52,13 @@ def main():
 
     # Lazy Dask DataFrame from partitioned parquet
     ddf = dd.read_parquet(pqpath)
+
+    if args.save_plot:
+        # Static export — no server
+        element = create_uv_plot(ddf, responsive=False)
+        hv.save(element, args.save_plot)
+        print(f"Plot saved to {args.save_plot}")
+        return
 
     # Build and launch Panel application
     app = build_app(ddf)
