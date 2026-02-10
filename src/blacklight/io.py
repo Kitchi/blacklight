@@ -4,7 +4,8 @@ IO module
 
 import os
 import shutil
-from multiprocessing import Pool, cpu_count
+import multiprocessing
+from multiprocessing import cpu_count
 
 import numpy as np
 import pyarrow as pa
@@ -278,7 +279,8 @@ def ms_to_parquet(
     ]
 
     # Parallel read — workers write part files directly
-    with Pool(nworkers) as pool:
+    ctx = multiprocessing.get_context("spawn")
+    with ctx.Pool(nworkers) as pool:
         part_paths = pool.map(_read_chunk, worker_args)
 
     total_rows = sum(pq.read_metadata(p).num_rows for p in part_paths)
