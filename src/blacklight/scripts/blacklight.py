@@ -69,17 +69,17 @@ def main():
         overwrite=args.overwrite, max_mem=args.max_mem,
     )
 
-    # Lazy Dask DataFrame — repartition to match thread count
+    # Read parquet into pandas — small enough to fit in memory
     ddf = dd.read_parquet(pqpath)
-    ddf = ddf.repartition(npartitions=nworkers)
+    df = ddf.compute()
 
     if args.save_plot:
         # Static export — no server
-        element = create_uv_plot(ddf, responsive=False)
+        element = create_uv_plot(df, responsive=False)
         hv.save(element, args.save_plot)
         print(f"Plot saved to {args.save_plot}")
         return
 
     # Build and launch Panel application
-    app = build_app(ddf)
+    app = build_app(df)
     app.show(port=args.port, open=not args.no_show)

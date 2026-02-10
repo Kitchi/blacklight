@@ -53,5 +53,5 @@ def view(ms, output_pq=None, nworkers=None, overwrite=False, max_mem=None, title
 
     pqpath = ms_to_parquet(ms, output_pq=output_pq, nworkers=nworkers, overwrite=overwrite, max_mem=max_mem)
     ddf = dd.read_parquet(pqpath)
-    ddf = ddf.repartition(npartitions=nworkers)
-    return build_app(ddf, title=title)
+    df = ddf.compute()
+    return build_app(df, title=title)
