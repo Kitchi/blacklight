@@ -21,22 +21,28 @@ blacklight <path-to-ms> -n 8              # 8 parallel workers
 blacklight <path-to-ms> --overwrite       # regenerate parquet cache
 blacklight <path-to-ms> --port 5006       # specific Panel server port
 blacklight <path-to-ms> --no-show         # start server without opening browser
+blacklight <path-to-ms> --output-pq /tmp/cache.pq  # custom parquet output path
 blacklight <path-to-ms> --save-plot out.html  # static export (HTML or PNG), no server
 ```
 
 ## Python / Jupyter
 
 ```python
+import blacklight
+
+# One-liner: MS → interactive app (in Jupyter)
+blacklight.view("my_data.ms").servable()
+
+# Custom parquet output path
+blacklight.view("my_data.ms", output_pq="/tmp/cache.pq").servable()
+
+# Lower-level: work with Dask DataFrame directly
 import dask.dataframe as dd
 from blacklight import create_uv_plot, build_app
 
 ddf = dd.read_parquet("my_data.ms.pq")
-
-# Quick inline plot (renders in Jupyter via HoloViews)
-create_uv_plot(ddf)
-
-# Full interactive widget app
-build_app(ddf).servable()
+create_uv_plot(ddf)           # inline HoloViews element
+build_app(ddf).servable()     # full widget app
 ```
 
 ## Architecture
@@ -50,7 +56,7 @@ Measurement Set
   → app.build_app()           # Panel interactive app with sidebar widgets
 ```
 
-Sidebar widgets: X/Y axis selectors, color aggregation, colormap, log scale toggle, field filter (multi-select).
+Sidebar widgets: X/Y axis selectors, log X/Y/color toggles, color aggregation, colormap with gradient preview, field filter (multi-select).
 
 ## Dependencies
 
