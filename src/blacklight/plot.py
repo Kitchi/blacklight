@@ -1,81 +1,92 @@
 """
-Plotting module
+Plotting module — Datashader rasterization via HoloViews
 """
 
-import numpy as np
-from bokeh.plotting import figure, show
+import datashader as ds
+import holoviews as hv
+from holoviews.operation.datashader import rasterize
+
+hv.extension("bokeh")
+
+# Available axis choices
+AXIS_COLUMNS = {
+    "U": "U (wavelengths)",
+    "V": "V (wavelengths)",
+    "W": "W (wavelengths)",
+    "TIME": "Time",
+    "UVDIST": "UV Distance",
+    "AMP": "Mean Amplitude",
+    "PHASE": "Mean Phase (rad)",
+}
+
+# Columns that can be used for color aggregation
+COLOR_COLUMNS = {
+    "count": "Point Density",
+    "AMP": "Mean Amplitude",
+    "PHASE": "Mean Phase (rad)",
+    "UVDIST": "UV Distance",
+}
+
+# Map color column names to datashader aggregators
+AGGREGATORS = {
+    "count": ds.count(),
+    "AMP": ds.mean("AMP"),
+    "PHASE": ds.mean("PHASE"),
+    "UVDIST": ds.mean("UVDIST"),
+}
 
 
-# =============================================================================
-# Derived quantities
-# =============================================================================
-
-
-def compute_mean_amplitude(df):
-    """Compute mean amplitude per row from nested DATA_REAL/DATA_IMAG."""
-    def row_amp(real, imag):
-        return np.sqrt(np.mean(np.array(real) ** 2 + np.array(imag) ** 2))
-
-    df["AMP"] = [row_amp(r, i) for r, i in zip(df["DATA_REAL"], df["DATA_IMAG"])]
-    return df
-
-
-def compute_mean_phase(df):
-    """Compute mean phase (radians) per row from nested DATA_REAL/DATA_IMAG."""
-    def row_phase(real, imag):
-        return np.mean(np.arctan2(np.array(imag), np.array(real)))
-
-    df["PHASE"] = [row_phase(r, i) for r, i in zip(df["DATA_REAL"], df["DATA_IMAG"])]
-    return df
-
-
-def compute_uvdist(df):
-    """Compute UV distance (sqrt(U^2 + V^2)) per row."""
-    df["UVDIST"] = np.sqrt(df["U"] ** 2 + df["V"] ** 2)
-    return df
-
-
-def add_derived_columns(df, amplitude=True, phase=False, uvdist=True):
+def create_uv_plot(
+    ddf,
+    xcol="U",
+    ycol="V",
+    agg_col="count",
+    width=800,
+    height=800,
+) -> hv.Element:
     """
-    Add commonly used derived columns to dataframe.
+    Create a rasterized scatter plot from a Dask DataFrame.
 
     Parameters
     ----------
-    df : DataFrame
-        Must have U, V columns. For amplitude/phase, needs DATA_REAL/DATA_IMAG.
-    amplitude : bool
-        Compute mean amplitude per row.
-    phase : bool
-        Compute mean phase per row.
-    uvdist : bool
-        Compute UV distance.
+    ddf : dask.dataframe.DataFrame
+        DataFrame with columns matching xcol, ycol, and agg_col.
+    xcol : str
+        Column for the x axis.
+    ycol : str
+        Column for the y axis.
+    agg_col : str
+        Aggregation column. "count" for density, or a column name
+        for ds.mean() aggregation.
+    width : int
+        Plot width in pixels.
+    height : int
+        Plot height in pixels.
 
     Returns
     -------
-    DataFrame
-        Input dataframe with added columns.
+    hv.Element
+        Rasterized HoloViews element.
     """
-    if amplitude and "DATA_REAL" in df.columns:
-        compute_mean_amplitude(df)
-    if phase and "DATA_REAL" in df.columns:
-        compute_mean_phase(df)
-    if uvdist:
-        compute_uvdist(df)
-    return df
+    points = hv.Points(ddf, kdims=[xcol, ycol])
 
+    aggregator = AGGREGATORS.get(agg_col, ds.count())
 
-# =============================================================================
-# Plotting
-# =============================================================================
+    rasterized = rasterize(points, aggregator=aggregator, width=width, height=height)
 
+    xlabel = AXIS_COLUMNS.get(xcol, xcol)
+    ylabel = AXIS_COLUMNS.get(ycol, ycol)
+    clabel = COLOR_COLUMNS.get(agg_col, agg_col)
 
-def plot_uv_basic(uvdf, xcol: str = "U", ycol: str = "V", zcol: str = "AMP") -> None:
-    """
-    Basic UV plotting functionality, colorized by zcol
+    rasterized = rasterized.opts(
+        width=width,
+        height=height,
+        colorbar=True,
+        clabel=clabel,
+        xlabel=xlabel,
+        ylabel=ylabel,
+        tools=["hover"],
+        sizing_mode="stretch_both",
+    )
 
-    TODO : Add signature
-    """
-
-    plot = figure(width=300, height=300, output_backend="webgl")
-    plot.scatter(x=xcol, y=ycol, size=2, color="red", source=uvdf)
-    show(plot)
+    return rasterized

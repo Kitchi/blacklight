@@ -64,18 +64,18 @@ def get_ms_metadata(input_ms: str) -> dict:
     }
 
 
-def compute_time_chunks(input_ms: str, nworkers: int = None) -> list[tuple[int, int]]:
+def compute_time_chunks(input_ms: str, nchunks: int = None) -> list[tuple[int, int]]:
     """
     Compute row ranges partitioned by time boundaries.
 
-    Splits the MS into approximately nworkers chunks, respecting integration
+    Splits the MS into approximately nchunks chunks, respecting integration
     boundaries (won't split mid-integration).
 
     Parameters
     ----------
     input_ms : str
         Path to the measurement set.
-    nworkers : int, optional
+    nchunks : int, optional
         Number of chunks to create. Defaults to cpu_count().
 
     Returns
@@ -83,8 +83,8 @@ def compute_time_chunks(input_ms: str, nworkers: int = None) -> list[tuple[int, 
     list[tuple[int, int]]
         List of (startrow, nrow) tuples.
     """
-    if nworkers is None:
-        nworkers = cpu_count()
+    if nchunks is None:
+        nchunks = cpu_count()
 
     _tb = table()
     _tb.open(input_ms)
@@ -96,8 +96,8 @@ def compute_time_chunks(input_ms: str, nworkers: int = None) -> list[tuple[int, 
     unique_times, first_indices = np.unique(time_col, return_index=True)
     n_times = len(unique_times)
 
-    if n_times <= nworkers:
-        # More workers than time steps - one chunk per time step
+    if n_times <= nchunks:
+        # More chunks than time steps - one chunk per time step
         chunks = []
         sorted_indices = np.argsort(first_indices)
         for i, idx in enumerate(sorted_indices):
@@ -109,18 +109,17 @@ def compute_time_chunks(input_ms: str, nworkers: int = None) -> list[tuple[int, 
             chunks.append((int(start), int(end - start)))
         return chunks
 
-    # Distribute time steps across workers
-    times_per_worker = n_times // nworkers
+    # Distribute time steps across chunks
+    times_per_chunk = n_times // nchunks
     chunks = []
     sorted_indices = np.argsort(first_indices)
 
-    for w in range(nworkers):
-        start_time_idx = w * times_per_worker
-        if w == nworkers - 1:
-            # Last worker gets remaining
+    for w in range(nchunks):
+        start_time_idx = w * times_per_chunk
+        if w == nchunks - 1:
             end_time_idx = n_times
         else:
-            end_time_idx = (w + 1) * times_per_worker
+            end_time_idx = (w + 1) * times_per_chunk
 
         startrow = first_indices[sorted_indices[start_time_idx]]
         if end_time_idx >= n_times:
@@ -138,21 +137,22 @@ def compute_time_chunks(input_ms: str, nworkers: int = None) -> list[tuple[int, 
 # =============================================================================
 
 
-def _read_chunk(args: tuple) -> pa.Table:
+def _read_chunk(args: tuple) -> str:
     """
-    Worker function: read a row range from MS and return Arrow table.
+    Worker function: read a row range from MS, compute scalar columns,
+    and write directly to a part file.
 
     Parameters
     ----------
     args : tuple
-        (input_ms, startrow, nrow, read_corrected)
+        (input_ms, startrow, nrow, chunk_index, output_dir)
 
     Returns
     -------
-    pa.Table
-        Arrow table with chunk data.
+    str
+        Path to the written part file.
     """
-    input_ms, startrow, nrow, read_corrected = args
+    input_ms, startrow, nrow, chunk_index, output_dir = args
 
     _tb = table()
     _tb.open(input_ms)
@@ -164,32 +164,26 @@ def _read_chunk(args: tuple) -> pa.Table:
     time_col = _tb.getcol("TIME", startrow=startrow, nrow=nrow)
     flag = _tb.getcol("FLAG", startrow=startrow, nrow=nrow)  # (npol, nchan, nrow)
     data = _tb.getcol("DATA", startrow=startrow, nrow=nrow)  # (npol, nchan, nrow)
-
-    # DATA_DESC_ID maps to SPW
     ddid = _tb.getcol("DATA_DESC_ID", startrow=startrow, nrow=nrow)
-
-    corrected_real = None
-    corrected_imag = None
-    if read_corrected:
-        corr = _tb.getcol("CORRECTED_DATA", startrow=startrow, nrow=nrow)
-        corrected_real = corr.real
-        corrected_imag = corr.imag
 
     _tb.close()
 
-    # Convert arrays to list-of-lists format for parquet
-    # DATA shape: (npol, nchan, nrow) -> per-row: list of npol lists, each with nchan values
-    npol, nchan, chunk_nrow = data.shape
+    # Compute amplitude and phase with flag masking
+    # data shape: (npol, nchan, nrow), flag shape: (npol, nchan, nrow)
+    amplitude = np.abs(data)  # (npol, nchan, nrow)
+    phase = np.angle(data)    # (npol, nchan, nrow)
 
-    # Reshape: (npol, nchan, nrow) -> (nrow, npol, nchan) -> list of lists
-    data_real_arr = data.real.transpose(2, 0, 1)  # (nrow, npol, nchan)
-    data_imag_arr = data.imag.transpose(2, 0, 1)
-    flag_arr = flag.transpose(2, 0, 1)
+    # Mask flagged values with NaN
+    amplitude = np.where(~flag, amplitude, np.nan)
+    phase = np.where(~flag, phase, np.nan)
 
-    # Convert to nested lists
-    data_real_nested = [row.tolist() for row in data_real_arr]
-    data_imag_nested = [row.tolist() for row in data_imag_arr]
-    flag_nested = [row.tolist() for row in flag_arr]
+    # Mean over pol and chan axes -> (nrow,)
+    with np.errstate(invalid="ignore"):
+        amp = np.nanmean(amplitude, axis=(0, 1))
+        pha = np.nanmean(phase, axis=(0, 1))
+
+    # UV distance
+    uvdist = np.sqrt(uvw[0] ** 2 + uvw[1] ** 2)
 
     result = {
         "ANTENNA1": ant1.astype(np.int32),
@@ -197,52 +191,50 @@ def _read_chunk(args: tuple) -> pa.Table:
         "U": uvw[0],
         "V": uvw[1],
         "W": uvw[2],
-        "DATA_REAL": data_real_nested,
-        "DATA_IMAG": data_imag_nested,
-        "FLAG": flag_nested,
+        "AMP": amp,
+        "PHASE": pha,
+        "UVDIST": uvdist,
         "TIME": time_col,
         "SPW_ID": ddid.astype(np.int32),
     }
 
-    if read_corrected:
-        corr_real_arr = corrected_real.transpose(2, 0, 1)
-        corr_imag_arr = corrected_imag.transpose(2, 0, 1)
-        result["CORRECTED_REAL"] = [row.tolist() for row in corr_real_arr]
-        result["CORRECTED_IMAG"] = [row.tolist() for row in corr_imag_arr]
+    part_table = pa.Table.from_pydict(result)
+    part_path = os.path.join(output_dir, f"part.{chunk_index}.parquet")
+    pq.write_table(part_table, part_path, compression="zstd")
 
-    return pa.Table.from_pydict(result)
+    return part_path
 
 
 def ms_to_parquet(
     input_ms: str,
     output_pq: str = None,
     nworkers: int = None,
+    npartitions: int = None,
     overwrite: bool = False,
-    include_corrected: bool = True,
 ) -> str:
     """
-    Parallel read of MS to parquet file.
+    Parallel read of MS to partitioned parquet directory.
 
     Parameters
     ----------
     input_ms : str
         Path to the measurement set.
     output_pq : str, optional
-        Output parquet path. Defaults to input_ms + ".parquet"
+        Output parquet directory path. Defaults to input_ms + ".pq"
     nworkers : int, optional
         Number of parallel workers. Defaults to cpu_count().
+    npartitions : int, optional
+        Number of parquet partitions. Defaults to max(nworkers, min(64, nrow // 500_000)).
     overwrite : bool
-        If True, overwrite existing parquet file.
-    include_corrected : bool
-        If True and CORRECTED_DATA exists, include it.
+        If True, overwrite existing parquet directory.
 
     Returns
     -------
     str
-        Path to the written parquet file.
+        Path to the written parquet directory.
     """
     if output_pq is None:
-        output_pq = input_ms + ".parquet"
+        output_pq = input_ms + ".pq"
 
     if os.path.exists(output_pq):
         if not overwrite:
@@ -256,28 +248,30 @@ def ms_to_parquet(
     if nworkers is None:
         nworkers = cpu_count()
 
-    # Get metadata to check for CORRECTED_DATA
     meta = get_ms_metadata(input_ms)
-    read_corrected = include_corrected and meta["has_corrected"]
 
-    # Compute chunks
-    chunks = compute_time_chunks(input_ms, nworkers)
+    if npartitions is None:
+        npartitions = max(nworkers, min(64, meta["nrow"] // 500_000 + 1))
+
+    # Create output directory
+    os.makedirs(output_pq, exist_ok=True)
+
+    # Compute chunks (decoupled from nworkers)
+    chunks = compute_time_chunks(input_ms, npartitions)
     print(f"Reading {meta['nrow']} rows in {len(chunks)} chunks with {nworkers} workers")
 
-    # Prepare worker args
+    # Prepare worker args — each chunk gets its index and output dir
     worker_args = [
-        (input_ms, startrow, nrow, read_corrected) for startrow, nrow in chunks
+        (input_ms, startrow, nrow, i, output_pq)
+        for i, (startrow, nrow) in enumerate(chunks)
     ]
 
-    # Parallel read
+    # Parallel read — workers write part files directly
     with Pool(nworkers) as pool:
-        tables = pool.map(_read_chunk, worker_args)
+        part_paths = pool.map(_read_chunk, worker_args)
 
-    # Concatenate and write
-    combined = pa.concat_tables(tables)
-    pq.write_table(combined, output_pq, compression="zstd")
-
-    print(f"Wrote {combined.num_rows} rows to {output_pq}")
+    total_rows = sum(pq.read_metadata(p).num_rows for p in part_paths)
+    print(f"Wrote {total_rows} rows across {len(part_paths)} part files to {output_pq}")
     return output_pq
 
 
@@ -347,5 +341,3 @@ def scale_uvw_fequency(uvw: np.ndarray, freqs: np.ndarray, reffreqs: np.ndarray)
     print(uvw[0, 100])
     print(scaled_uvw[0, 16 * 100])
     print(freqs[0], reffreqs[0])
-
-

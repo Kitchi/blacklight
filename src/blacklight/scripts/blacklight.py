@@ -4,9 +4,10 @@
 
 import argparse
 
-import pyarrow.parquet as pq
+import dask.dataframe as dd
 
-from blacklight import io, plot
+from blacklight import io
+from blacklight.app import build_app
 
 
 def main():
@@ -24,20 +25,25 @@ def main():
     parser.add_argument(
         "--overwrite", action="store_true", help="Overwrite existing parquet cache"
     )
+    parser.add_argument(
+        "--port", type=int, default=0, help="Port for Panel server (0 = auto)"
+    )
+    parser.add_argument(
+        "--no-show",
+        action="store_true",
+        help="Start server without opening browser",
+    )
 
     args = parser.parse_args()
 
-    # Convert MS to parquet (parallel read)
+    # Convert MS to partitioned parquet directory
     pqpath = io.ms_to_parquet(
         args.MS, nworkers=args.nworkers, overwrite=args.overwrite
     )
 
-    # Read parquet for plotting
-    table = pq.read_table(pqpath, columns=["U", "V", "DATA_REAL", "DATA_IMAG"])
-    df = table.to_pandas()
+    # Lazy Dask DataFrame from partitioned parquet
+    ddf = dd.read_parquet(pqpath)
 
-    # Add derived columns, then drop the heavy nested arrays
-    plot.add_derived_columns(df, amplitude=True, uvdist=True)
-    df.drop(columns=["DATA_REAL", "DATA_IMAG"], inplace=True)
-
-    plot.plot_uv_basic(df, xcol="U", ycol="V", zcol="AMP")
+    # Build and launch Panel application
+    app = build_app(ddf)
+    app.show(port=args.port, open=not args.no_show)
