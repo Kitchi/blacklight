@@ -50,7 +50,7 @@ def build_app(ddf, title="Blacklight") -> pn.Template:
 
     # Populate field choices from the dataframe
     if "FIELD" in ddf.columns:
-        field_options = sorted(ddf["FIELD"].unique().compute().tolist())
+        field_options = sorted(ddf["FIELD"].unique().tolist())
     else:
         field_options = []
 
