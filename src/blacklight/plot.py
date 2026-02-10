@@ -2,6 +2,7 @@
 Plotting module — Datashader rasterization via HoloViews
 """
 
+import numpy as np
 import datashader as ds
 import holoviews as hv
 from holoviews.operation.datashader import dynspread, rasterize, spread
@@ -120,11 +121,21 @@ def create_uv_plot(
     else:
         rasterized = dynspread(rasterized, max_px=4, threshold=0.5)
 
+    # Fixed color limits for column-based aggregations so colorbar
+    # doesn't rescale on zoom. Count is excluded — density per pixel
+    # inherently changes with zoom level.
+    clim = None
+    if agg_col != "count":
+        lo = float(ddf[agg_col].min().compute())
+        hi = float(ddf[agg_col].max().compute())
+        if np.isfinite(lo) and np.isfinite(hi) and lo < hi:
+            clim = (lo, hi)
+
     xlabel = AXIS_COLUMNS.get(xcol, xcol)
     ylabel = AXIS_COLUMNS.get(ycol, ycol)
     clabel = COLOR_COLUMNS.get(agg_col, agg_col)
 
-    rasterized = rasterized.opts(
+    opts_kw = dict(
         responsive=responsive,
         colorbar=True,
         clabel=clabel,
@@ -136,5 +147,8 @@ def create_uv_plot(
         logy=logy,
         tools=["hover"],
     )
+    if clim is not None:
+        opts_kw["clim"] = clim
+    rasterized = rasterized.opts(**opts_kw)
 
     return rasterized
