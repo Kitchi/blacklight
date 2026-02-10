@@ -2,13 +2,18 @@
 Blacklight — UV plane visualization for radio interferometric data.
 """
 
+import dask
 import dask.dataframe as dd
+import numba
 
 from blacklight.app import build_app
-from blacklight.io import get_ms_metadata, ms_to_parquet
+from blacklight.io import available_cpus, get_ms_metadata, ms_to_parquet
 from blacklight.plot import create_uv_plot
 
-__all__ = ["ms_to_parquet", "get_ms_metadata", "create_uv_plot", "build_app", "view"]
+__all__ = [
+    "available_cpus", "ms_to_parquet", "get_ms_metadata",
+    "create_uv_plot", "build_app", "view",
+]
 
 
 def view(ms, output_pq=None, nworkers=None, overwrite=False, max_mem=None, title="Blacklight"):
@@ -23,7 +28,9 @@ def view(ms, output_pq=None, nworkers=None, overwrite=False, max_mem=None, title
     output_pq : str, optional
         Output parquet directory path. Defaults to ``<ms>.pq``.
     nworkers : int, optional
-        Number of parallel workers for MS → parquet conversion.
+        Number of parallel workers for MS → parquet conversion,
+        Dask thread pool, and Numba thread pool. Defaults to
+        available CPUs (cgroups-aware).
     overwrite : bool
         If True, regenerate the parquet cache even if it exists.
     max_mem : float, optional
@@ -38,6 +45,13 @@ def view(ms, output_pq=None, nworkers=None, overwrite=False, max_mem=None, title
         Panel app. Call ``.servable()`` in a notebook or ``.show()``
         to launch a server.
     """
+    if nworkers is None:
+        nworkers = available_cpus()
+
+    dask.config.set(num_workers=nworkers)
+    numba.set_num_threads(nworkers)
+
     pqpath = ms_to_parquet(ms, output_pq=output_pq, nworkers=nworkers, overwrite=overwrite, max_mem=max_mem)
     ddf = dd.read_parquet(pqpath)
+    ddf = ddf.repartition(npartitions=nworkers)
     return build_app(ddf, title=title)

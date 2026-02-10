@@ -2,6 +2,7 @@
 Plotting module — Datashader rasterization via HoloViews
 """
 
+import dask
 import numpy as np
 import datashader as ds
 import holoviews as hv
@@ -126,8 +127,8 @@ def create_uv_plot(
     # inherently changes with zoom level.
     clim = None
     if agg_col != "count":
-        lo = float(ddf[agg_col].min().compute())
-        hi = float(ddf[agg_col].max().compute())
+        lo, hi = dask.compute(ddf[agg_col].min(), ddf[agg_col].max())
+        lo, hi = float(lo), float(hi)
         if np.isfinite(lo) and np.isfinite(hi) and lo < hi:
             clim = (lo, hi)
 

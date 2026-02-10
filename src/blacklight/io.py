@@ -6,12 +6,19 @@ import math
 import multiprocessing
 import os
 import shutil
-from multiprocessing import cpu_count
 
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 from casatools import msmetadata, table
+
+
+def available_cpus():
+    """Return the number of CPUs available to this process (cgroups-aware)."""
+    try:
+        return len(os.sched_getaffinity(0))
+    except AttributeError:
+        return os.cpu_count() or 1
 
 
 # =============================================================================
@@ -86,7 +93,7 @@ def compute_time_chunks(input_ms: str, nchunks: int = None) -> list[tuple[int, i
         List of (startrow, nrow) tuples.
     """
     if nchunks is None:
-        nchunks = cpu_count()
+        nchunks = available_cpus()
 
     _tb = table()
     _tb.open(input_ms)
@@ -259,7 +266,7 @@ def ms_to_parquet(
             os.remove(output_pq)
 
     if nworkers is None:
-        nworkers = cpu_count()
+        nworkers = available_cpus()
 
     meta = get_ms_metadata(input_ms)
 

@@ -4,11 +4,14 @@
 
 import argparse
 
+import dask
 import dask.dataframe as dd
 import holoviews as hv
+import numba
 
 from blacklight import io
 from blacklight.app import build_app
+from blacklight.io import available_cpus
 from blacklight.plot import create_uv_plot
 
 
@@ -56,14 +59,19 @@ def main():
 
     args = parser.parse_args()
 
+    nworkers = args.nworkers or available_cpus()
+    dask.config.set(num_workers=nworkers)
+    numba.set_num_threads(nworkers)
+
     # Convert MS to partitioned parquet directory
     pqpath = io.ms_to_parquet(
-        args.MS, output_pq=args.output_pq, nworkers=args.nworkers,
+        args.MS, output_pq=args.output_pq, nworkers=nworkers,
         overwrite=args.overwrite, max_mem=args.max_mem,
     )
 
-    # Lazy Dask DataFrame from partitioned parquet
+    # Lazy Dask DataFrame — repartition to match thread count
     ddf = dd.read_parquet(pqpath)
+    ddf = ddf.repartition(npartitions=nworkers)
 
     if args.save_plot:
         # Static export — no server
