@@ -116,7 +116,7 @@ def create_uv_plot(
 
     aggregator = AGGREGATORS.get(agg_col, ds.count())
 
-    rasterized = rasterize(points, aggregator=aggregator, width=width, height=height)
+    rasterized = rasterize(points, aggregator=aggregator)
     if logx or logy:
         rasterized = spread(rasterized, px=2)
     else:
@@ -137,6 +137,8 @@ def create_uv_plot(
     clabel = COLOR_COLUMNS.get(agg_col, agg_col)
 
     opts_kw = dict(
+        width=width,
+        height=height,
         responsive=responsive,
         colorbar=True,
         clabel=clabel,
