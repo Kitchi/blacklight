@@ -237,7 +237,7 @@ def ms_to_parquet(
     overwrite : bool
         If True, overwrite existing parquet directory.
     max_mem : float, optional
-        Maximum total RAM budget in bytes for parallel workers. Used to
+        Maximum total RAM budget in GB for parallel workers. Used to
         auto-size ``npartitions`` so each chunk's peak working set fits in
         ``max_mem / nworkers``. Defaults to total system RAM.
 
@@ -274,12 +274,13 @@ def ms_to_parquet(
         # Peak memory per row: DATA + FLAG + amp + phase + masked intermediates
         bytes_per_row = meta["npol"] * max_nchan * 50
         if max_mem is None:
-            max_mem = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
-        mem_per_worker = max_mem / nworkers
+            max_mem = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1024**3
+        max_mem_bytes = max_mem * 1024**3
+        mem_per_worker = max_mem_bytes / nworkers
         rows_per_chunk = max(1, int(mem_per_worker / bytes_per_row))
         npartitions = max(nworkers, math.ceil(meta["nrow"] / rows_per_chunk))
         print(
-            f"Memory budget: {max_mem / 1024**3:.1f} GB total, "
+            f"Memory budget: {max_mem:.1f} GB total, "
             f"~{mem_per_worker / 1024**3:.1f} GB/worker → "
             f"{rows_per_chunk} rows/chunk"
         )

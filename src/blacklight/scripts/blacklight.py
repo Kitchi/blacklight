@@ -57,10 +57,9 @@ def main():
     args = parser.parse_args()
 
     # Convert MS to partitioned parquet directory
-    max_mem_bytes = args.max_mem * 1024**3 if args.max_mem else None
     pqpath = io.ms_to_parquet(
         args.MS, output_pq=args.output_pq, nworkers=args.nworkers,
-        overwrite=args.overwrite, max_mem=max_mem_bytes,
+        overwrite=args.overwrite, max_mem=args.max_mem,
     )
 
     # Lazy Dask DataFrame from partitioned parquet

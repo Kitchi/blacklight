@@ -27,7 +27,7 @@ def view(ms, output_pq=None, nworkers=None, overwrite=False, max_mem=None, title
     overwrite : bool
         If True, regenerate the parquet cache even if it exists.
     max_mem : float, optional
-        Maximum total RAM budget in bytes for parallel workers.
+        Maximum total RAM budget in GB for parallel workers.
         Defaults to total system RAM.
     title : str
         Application title.
