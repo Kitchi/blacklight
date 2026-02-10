@@ -2,9 +2,10 @@
 IO module
 """
 
+import math
+import multiprocessing
 import os
 import shutil
-import multiprocessing
 from multiprocessing import cpu_count
 
 import numpy as np
@@ -217,6 +218,7 @@ def ms_to_parquet(
     nworkers: int = None,
     npartitions: int = None,
     overwrite: bool = False,
+    max_mem: float = None,
 ) -> str:
     """
     Parallel read of MS to partitioned parquet directory.
@@ -230,9 +232,14 @@ def ms_to_parquet(
     nworkers : int, optional
         Number of parallel workers. Defaults to cpu_count().
     npartitions : int, optional
-        Number of parquet partitions. Defaults to max(nworkers, min(64, nrow // 500_000)).
+        Number of parquet partitions. Auto-sized from ``max_mem`` when not
+        given, so that all workers fit within the memory budget.
     overwrite : bool
         If True, overwrite existing parquet directory.
+    max_mem : float, optional
+        Maximum total RAM budget in bytes for parallel workers. Used to
+        auto-size ``npartitions`` so each chunk's peak working set fits in
+        ``max_mem / nworkers``. Defaults to total system RAM.
 
     Returns
     -------
@@ -263,7 +270,19 @@ def ms_to_parquet(
     _msmd.close()
 
     if npartitions is None:
-        npartitions = max(nworkers, min(64, meta["nrow"] // 500_000 + 1))
+        max_nchan = max(meta["nchan"].values())
+        # Peak memory per row: DATA + FLAG + amp + phase + masked intermediates
+        bytes_per_row = meta["npol"] * max_nchan * 50
+        if max_mem is None:
+            max_mem = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+        mem_per_worker = max_mem / nworkers
+        rows_per_chunk = max(1, int(mem_per_worker / bytes_per_row))
+        npartitions = max(nworkers, math.ceil(meta["nrow"] / rows_per_chunk))
+        print(
+            f"Memory budget: {max_mem / 1024**3:.1f} GB total, "
+            f"~{mem_per_worker / 1024**3:.1f} GB/worker → "
+            f"{rows_per_chunk} rows/chunk"
+        )
 
     # Create output directory
     os.makedirs(output_pq, exist_ok=True)

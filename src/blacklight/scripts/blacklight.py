@@ -40,6 +40,13 @@ def main():
         help="Start server without opening browser",
     )
     parser.add_argument(
+        "--max-mem",
+        type=float,
+        default=None,
+        metavar="GB",
+        help="Maximum RAM budget in GB for parallel workers (default: system RAM)",
+    )
+    parser.add_argument(
         "--save-plot",
         type=str,
         default=None,
@@ -50,8 +57,10 @@ def main():
     args = parser.parse_args()
 
     # Convert MS to partitioned parquet directory
+    max_mem_bytes = args.max_mem * 1024**3 if args.max_mem else None
     pqpath = io.ms_to_parquet(
-        args.MS, output_pq=args.output_pq, nworkers=args.nworkers, overwrite=args.overwrite
+        args.MS, output_pq=args.output_pq, nworkers=args.nworkers,
+        overwrite=args.overwrite, max_mem=max_mem_bytes,
     )
 
     # Lazy Dask DataFrame from partitioned parquet
