@@ -4,21 +4,35 @@ Plotting module — Datashader rasterization via HoloViews
 
 import datashader as ds
 import holoviews as hv
-from holoviews.operation.datashader import rasterize
+from holoviews.operation.datashader import dynspread, rasterize, spread
 
 hv.extension("bokeh")
 
 # Curated colormap choices (colorcet names → display labels)
 COLORMAPS = {
+    # Sequential
     "kbc": "Blue (kbc)",
     "fire": "Fire",
     "bgy": "Blue-Green-Yellow",
+    "bgyw": "Blue-Green-Yellow-White",
     "bmw": "Blue-Magenta-White",
     "bmy": "Blue-Magenta-Yellow",
+    "kgy": "Green-Yellow",
     "gray": "Grayscale",
-    "rainbow4": "Rainbow",
-    "coolwarm": "Cool-Warm (diverging)",
+    "dimgray": "Dark Grayscale",
+    "kb": "Blue (linear)",
+    "kr": "Red (linear)",
+    "kg": "Green (linear)",
+    # Diverging
+    "coolwarm": "Cool-Warm",
+    "bkr": "Blue-Black-Red",
+    "bky": "Blue-Black-Yellow",
+    "gwv": "Green-White-Violet",
     "CET_D1": "Diverging Blue-Red",
+    # Rainbow / cyclic
+    "rainbow4": "Rainbow",
+    "isolum": "Isoluminant Rainbow",
+    "colorwheel": "Color Wheel (cyclic)",
 }
 
 # Available axis choices
@@ -56,6 +70,8 @@ def create_uv_plot(
     agg_col="count",
     cmap="kbc",
     logz=False,
+    logx=False,
+    logy=False,
     responsive=True,
     width=800,
     height=800,
@@ -78,6 +94,10 @@ def create_uv_plot(
         Colormap name (colorcet key).
     logz : bool
         If True, use logarithmic color scale.
+    logx : bool
+        If True, use logarithmic x axis scale.
+    logy : bool
+        If True, use logarithmic y axis scale.
     responsive : bool
         If True, plot fills available space. Set False for static export.
     width : int
@@ -95,6 +115,10 @@ def create_uv_plot(
     aggregator = AGGREGATORS.get(agg_col, ds.count())
 
     rasterized = rasterize(points, aggregator=aggregator, width=width, height=height)
+    if logx or logy:
+        rasterized = spread(rasterized, px=2)
+    else:
+        rasterized = dynspread(rasterized, max_px=4, threshold=0.5)
 
     xlabel = AXIS_COLUMNS.get(xcol, xcol)
     ylabel = AXIS_COLUMNS.get(ycol, ycol)
@@ -108,6 +132,8 @@ def create_uv_plot(
         ylabel=ylabel,
         cmap=cmap,
         logz=logz,
+        logx=logx,
+        logy=logy,
         tools=["hover"],
     )
 
