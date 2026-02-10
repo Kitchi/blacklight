@@ -25,6 +25,10 @@ def main():
         "-n", "--nworkers", type=int, default=None, help="Number of parallel workers"
     )
     parser.add_argument(
+        "--output-pq", type=str, default=None, metavar="PATH",
+        help="Output parquet directory path (default: <MS>.pq)",
+    )
+    parser.add_argument(
         "--overwrite", action="store_true", help="Overwrite existing parquet cache"
     )
     parser.add_argument(
@@ -47,7 +51,7 @@ def main():
 
     # Convert MS to partitioned parquet directory
     pqpath = io.ms_to_parquet(
-        args.MS, nworkers=args.nworkers, overwrite=args.overwrite
+        args.MS, output_pq=args.output_pq, nworkers=args.nworkers, overwrite=args.overwrite
     )
 
     # Lazy Dask DataFrame from partitioned parquet
